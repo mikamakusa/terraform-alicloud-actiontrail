@@ -1,12 +1,17 @@
-resource "alicloud_actiontrail" "this" {
-  count              = length(var.actiontrail)
-  name               = lookup(var.actiontrail[count.index], "name")
-  event_rw           = lookup(var.actiontrail[count.index], "event_rw")
-  oss_bucket_name    = var.buckets != null ? data.alicloud_oss_buckets.this.id : element(alicloud_oss_bucket.this.*.bucket, lookup(var.actiontrail[count.index], "oss_bucket_id"))
-  role_name          = element(alicloud_ram_role_policy_attachment.this.*.role_name, lookup(var.actiontrail[count.index], "role_id"))
-  oss_key_prefix     = lookup(var.actiontrail[count.index], "oss_key_prefix")
-  sls_project_arn    = lookup(var.actiontrail[count.index], "sls_project_arn")
-  sls_write_role_arn = lookup(var.actiontrail[count.index], "sls_write_role_arn")
+resource "alicloud_actiontrail_trail" "this" {
+  for_each                   = { for trail in var.trails : trail.name => trail }
+  trail_name                 = each.value.name
+  event_rw                   = each.value.event_rw
+  oss_bucket_name            = data.alicloud_oss_buckets.this.names
+  oss_key_prefix             = each.value.oss_key_prefix
+  sls_project_arn            = join(":", ["acs:log", data.alicloud_regions.this.id, data.alicloud_account.this.id, join("/", ["project", data.alicloud_log_projects.this.id])])
+  sls_write_role_arn         = data.alicloud_ram_roles.this.0.id
+  status                     = each.value.status
+  is_organization_trail      = each.value.is_organization_trail
+  max_compute_project_arn    = each.value.max_compute_project_arn
+  max_compute_write_role_arn = each.value.max_compute_write_role_arn
+  trail_region               = each.value.trail_region
+  oss_write_role_arn         = data.alicloud_ram_roles.this.names
 }
 
 resource "alicloud_actiontrail_global_events_storage_region" "this" {
@@ -15,20 +20,13 @@ resource "alicloud_actiontrail_global_events_storage_region" "this" {
 }
 
 resource "alicloud_actiontrail_history_delivery_job" "this" {
-  count      = length(var.delivery_job)
-  trail_name = element(alicloud_actiontrail.this.*.name, lookup(var.delivery_job[count.index], "trail_id"))
+  for_each   = { for trail in var.trails : trail.name => trail if contains(keys(trail), "delivery_jobs") && trail.delivery_jobs != false }
+  trail_name = alicloud_actiontrail_trail.this[each.key].name
 }
 
-resource "alicloud_actiontrail_trail" "this" {
-  count                 = length(var.trail)
-  trail_name            = lookup(var.trail[count.index], "trail_name")
-  event_rw              = lookup(var.trail[count.index], "event_rw")
-  oss_bucket_name       = element(alicloud_oss_bucket.this.*.bucket, lookup(var.trail[count.index], "bucket_id"))
-  oss_key_prefix        = lookup(var.trail[count.index], "oss_key_prefix")
-  role_name             = element(alicloud_ram_role.this.*.name, lookup(var.trail[count.index], "role_id"))
-  sls_project_arn       = join(":", ["acs:log", data.alicloud_regions.this.id, data.alicloud_account.this.id, join("/", ["project", var.log_project != null ? data.alicloud_log_projects.this.id : element(alicloud_log_project.this.*.name, lookup(var.trail[count.index], "sls_project_id"))])])
-  sls_write_role_arn    = var.log_project ? data.alicloud_ram_roles.sls_role.id : element(alicloud_ram_role.this.*.id, lookup(var.trail[count.index], "role_id"))
-  mns_topic_arn         = var.topics ? data.alicloud_mns_topics.this.id : element(alicloud_mns_topic.this.*.name, lookup(var.trail[count.index], "mns_topic_id"))
-  status                = lookup(var.trail[count.index], "status")
-  is_organization_trail = lookup(var.trail[count.index], "is_organization_trail")
+resource "alicloud_actiontrail_advanced_query_template" "this" {
+  for_each      = var.advanced_query_template
+  simple_query  = each.value.simple_query
+  template_sql  = each.value.template_sql
+  template_name = each.key
 }

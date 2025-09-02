@@ -5,7 +5,6 @@ run "setup_tests" {
 }
 
 run "actiontrail_trail" {
-  command = [init,plan,apply]
 
   variables {
     log_projects = [
